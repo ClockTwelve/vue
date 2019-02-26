@@ -535,14 +535,38 @@ describe('parser', () => {
     expect('The value for a v-bind expression cannot be empty. Found in "v-bind:empty-msg"').toHaveBeenWarned()
   })
 
-  it('v-bind.prop shorthand syntax', () => {
-    const ast = parse('<div .id="foo"></div>', baseOptions)
-    expect(ast.props).toEqual([{ name: 'id', value: 'foo'}])
-  })
+  if (process.env.VBIND_PROP_SHORTHAND) {
+    it('v-bind.prop shorthand syntax', () => {
+      const ast = parse('<div .id="foo"></div>', baseOptions)
+      expect(ast.props).toEqual([{ name: 'id', value: 'foo', dynamic: false }])
+    })
 
-  it('v-bind.prop shorthand syntax w/ modifiers', () => {
-    const ast = parse('<div .id.mod="foo"></div>', baseOptions)
-    expect(ast.props).toEqual([{ name: 'id', value: 'foo'}])
+    it('v-bind.prop shorthand syntax w/ modifiers', () => {
+      const ast = parse('<div .id.mod="foo"></div>', baseOptions)
+      expect(ast.props).toEqual([{ name: 'id', value: 'foo', dynamic: false }])
+    })
+
+    it('v-bind.prop shorthand dynamic argument', () => {
+      const ast = parse('<div .[id]="foo"></div>', baseOptions)
+      expect(ast.props).toEqual([{ name: 'id', value: 'foo', dynamic: true }])
+    })
+  }
+
+  // This only works for string templates.
+  // In-DOM templates will be malformed before Vue can parse it.
+  describe('parse and warn invalid dynamic arguments', () => {
+    [
+      `<div v-bind:['foo' + bar]="baz"/>`,
+      `<div :['foo' + bar]="baz"/>`,
+      `<div @['foo' + bar]="baz"/>`,
+      `<foo #['foo' + bar]="baz"/>`,
+      `<div :['foo' + bar].some.mod="baz"/>`
+    ].forEach(template => {
+      it(template, () => {
+        const ast = parse(template, baseOptions)
+        expect(`Invalid dynamic argument expression`).toHaveBeenWarned()
+      })
+    })
   })
 
   // #6887
@@ -762,6 +786,16 @@ describe('parser', () => {
     expect(ast.children[1].text).toBe('comment here')
   })
 
+  // #9407
+  it('should parse templates with comments anywhere', () => {
+    const options = extend({
+      comments: true
+    }, baseOptions)
+    const ast = parse(`<!--comment here--><div>123</div>`, options)
+    expect(ast.tag).toBe('div')
+    expect(ast.children.length).toBe(1)
+  })
+
   // #8103
   it('should allow CRLFs in string interpolations', () => {
     const ast = parse(`<p>{{\r\nmsg\r\n}}</p>`, baseOptions)
@@ -773,7 +807,7 @@ describe('parser', () => {
       preserveWhitespace: false
     }, baseOptions)
 
-     const ast = parse('<p>\n  Welcome to <b>Vue.js</b>    <i>world</i>  \n  <span>.\n  Have fun!\n</span></p>', options)
+    const ast = parse('<p>\n  Welcome to <b>Vue.js</b>    <i>world</i>  \n  <span>.\n  Have fun!\n</span></p>', options)
     expect(ast.tag).toBe('p')
     expect(ast.children.length).toBe(4)
     expect(ast.children[0].type).toBe(3)
